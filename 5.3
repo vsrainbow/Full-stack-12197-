@@ -1,0 +1,176 @@
+{
+  "name": "ecommerce-catalog",
+  "version": "1.0.0",
+  "description": "E-commerce Catalog with Nested Document Structure in MongoDB",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "keywords": ["mongoose", "mongodb", "ecommerce", "nested", "catalog", "nodejs"],
+  "author": "Your Name",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "mongoose": "^8.5.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}
+const mongoose = require('mongoose');
+
+// Define a nested schema for product variants
+const variantSchema = new mongoose.Schema({
+  color: {
+    type: String,
+    required: [true, 'Color is required']
+  },
+  size: {
+    type: String,
+    required: [true, 'Size is required']
+  },
+  stock: {
+    type: Number,
+    required: [true, 'Stock quantity is required'],
+    min: [0, 'Stock cannot be negative']
+  }
+});
+
+// Define main product schema
+const productSchema = new mongoose.Schema(
+  {
+    name: {
+      type: String,
+      required: [true, 'Product name is required']
+    },
+    price: {
+      type: Number,
+      required: [true, 'Price is required'],
+      min: [0, 'Price cannot be negative']
+    },
+    category: {
+      type: String,
+      required: [true, 'Category is required']
+    },
+    variants: [variantSchema] // nested document array
+  },
+  { timestamps: true }
+);
+
+module.exports = mongoose.model('Product', productSchema);
+const Product = require('../models/Product');
+
+// CREATE - Add a new product with variants
+exports.createProduct = async (req, res) => {
+  try {
+    const { name, price, category, variants } = req.body;
+    const product = new Product({ name, price, category, variants });
+    await product.save();
+    res.status(201).json({ message: 'Product created successfully', product });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+};
+
+// READ - Get all products
+exports.getAllProducts = async (req, res) => {
+  try {
+    const products = await Product.find();
+    res.json(products);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// FILTER - Get products by category
+exports.getProductsByCategory = async (req, res) => {
+  try {
+    const { category } = req.params;
+    const products = await Product.find({ category });
+    if (products.length === 0)
+      return res.status(404).json({ message: 'No products found for this category' });
+    res.json(products);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// PROJECT - Get variant details only
+exports.getProductVariants = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const product = await Product.findById(id, { name: 1, variants: 1, _id: 0 });
+    if (!product)
+      return res.status(404).json({ message: 'Product not found' });
+    res.json(product);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// UPDATE - Update a product
+exports.updateProduct = async (req, res) => {
+  try {
+    const updated = await Product.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+      runValidators: true
+    });
+    if (!updated) return res.status(404).json({ message: 'Product not found' });
+    res.json({ message: 'Product updated successfully', updated });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+};
+
+// DELETE - Delete a product
+exports.deleteProduct = async (req, res) => {
+  try {
+    const deleted = await Product.findByIdAndDelete(req.params.id);
+    if (!deleted) return res.status(404).json({ message: 'Product not found' });
+    res.json({ message: 'Product deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+const express = require('express');
+const router = express.Router();
+const productController = require('../controllers/productController');
+
+// Product Routes
+router.post('/', productController.createProduct);
+router.get('/', productController.getAllProducts);
+router.get('/category/:category', productController.getProductsByCategory);
+router.get('/:id/variants', productController.getProductVariants);
+router.put('/:id', productController.updateProduct);
+router.delete('/:id', productController.deleteProduct);
+
+module.exports = router;
+const express = require('express');
+const mongoose = require('mongoose');
+const dotenv = require('dotenv');
+const productRoutes = require('./routes/productRoutes');
+
+dotenv.config();
+const app = express();
+
+app.use(express.json());
+
+// MongoDB connection
+mongoose
+  .connect(process.env.MONGO_URI)
+  .then(() => console.log('✅ MongoDB connected successfully'))
+  .catch((err) => console.error('❌ MongoDB connection error:', err));
+
+// Routes
+app.use('/api/products', productRoutes);
+
+// Root route
+app.get('/', (req, res) => {
+  res.send('Welcome to the E-commerce Catalog API!');
+});
+
+// Start server
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
